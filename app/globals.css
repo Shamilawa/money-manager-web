@@ -1,0 +1,101 @@
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap");
+@import "tailwindcss";
+
+@theme {
+  --color-bg-base: #08080a;
+  --color-bg-panel: #111115;
+  --color-bg-sidebar: #0b0b0d;
+  --color-bg-card: #15151b;
+  --color-border-subtle: #212127;
+  --color-border-active: #31313c;
+  
+  --color-emerald-primary: #10b981;
+  --color-emerald-glow: rgba(16, 185, 129, 0.15);
+  --color-mint-bright: #34d399;
+  --color-rose-loss: #f43f5e;
+  --color-rose-glow: rgba(244, 63, 94, 0.15);
+
+  --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+  
+  --radius-card: 12px;
+  --radius-control: 6px;
+  
+  --animate-pulse-slow: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Custom scrollbars for high-density dashboard layouts */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-bg-base);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-subtle);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border-active);
+}
+
+/* Base resets & typography */
+html,
+body {
+  background-color: var(--color-bg-base);
+  color: #e4e4e7;
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Smooth layout and focus indicators */
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--color-emerald-primary) !important;
+  box-shadow: 0 0 0 1px var(--color-emerald-glow) !important;
+}
+
+/* Glass border-highlight effect */
+.glass-border {
+  position: relative;
+}
+
+.glass-border::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.01));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* Tactical push button animations */
+.btn-tactile {
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.btn-tactile:active {
+  transform: scale(0.96) translateY(1px);
+}
+
+/* Glow highlights */
+.glow-emerald {
+  box-shadow: 0 0 20px -5px var(--color-emerald-glow);
+}
+
+.glow-rose {
+  box-shadow: 0 0 20px -5px var(--color-rose-glow);
+}
