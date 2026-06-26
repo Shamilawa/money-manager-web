@@ -9,6 +9,7 @@ import { BudgetTracker } from "../components/BudgetTracker";
 import { TransactionsTable } from "../components/TransactionsTable";
 import { TransactionModal } from "../components/TransactionModal";
 import { WalletModal } from "../components/WalletModal";
+import { DebtManager } from "../components/DebtManager";
 import { AnalyticsCharts } from "../components/AnalyticsCharts";
 import { Plus, List, X, Calendar, CircleNotch } from "@phosphor-icons/react";
 import { useFinance } from "../context/FinanceContext";
@@ -157,6 +158,10 @@ const AppContent: React.FC = () => {
                       onAddWallet={handleNewWallet}
                       onEditWallet={handleEditWallet}
                     />
+                  </section>
+
+                  <section aria-label="Debt Management">
+                    <DebtManager />
                   </section>
 
                   <section aria-label="Budgets Tracking" className="flex-1 min-h-[300px]">

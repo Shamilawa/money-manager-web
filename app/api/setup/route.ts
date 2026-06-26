@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 
 export async function GET() {
   try {
+    // 1. Initial Tables
     await sql`
       CREATE TABLE IF NOT EXISTS accounts (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -34,7 +35,15 @@ export async function GET() {
       );
     `;
 
-    return NextResponse.json({ message: "Database initialized successfully" });
+    // 2. Safe Migrations for Debt Management & Transfers
+    await sql`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS interest_rate DECIMAL(5, 2);`;
+    await sql`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS credit_limit DECIMAL(12, 2);`;
+    await sql`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS minimum_payment DECIMAL(12, 2);`;
+    await sql`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS due_date INTEGER;`;
+    
+    await sql`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS to_account_id UUID REFERENCES accounts(id) ON DELETE CASCADE;`;
+
+    return NextResponse.json({ message: "Database initialized and migrated successfully" });
   } catch (error) {
     return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }

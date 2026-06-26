@@ -18,6 +18,10 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose, editi
   const [type, setType] = useState<Account["type"]>("checking");
   const [balance, setBalance] = useState("");
   const [color, setColor] = useState("#10b981");
+  const [interestRate, setInterestRate] = useState("");
+  const [creditLimit, setCreditLimit] = useState("");
+  const [minimumPayment, setMinimumPayment] = useState("");
+  const [dueDate, setDueDate] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
@@ -27,11 +31,19 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose, editi
       setType(editingWallet.type);
       setBalance(editingWallet.balance.toString());
       setColor(editingWallet.color);
+      setInterestRate(editingWallet.interestRate?.toString() || "");
+      setCreditLimit(editingWallet.creditLimit?.toString() || "");
+      setMinimumPayment(editingWallet.minimumPayment?.toString() || "");
+      setDueDate(editingWallet.dueDate?.toString() || "");
     } else {
       setName("");
       setType("checking");
       setBalance("");
       setColor("#10b981");
+      setInterestRate("");
+      setCreditLimit("");
+      setMinimumPayment("");
+      setDueDate("");
     }
     setErrors({});
     setShowDeleteConfirm(false);
@@ -62,17 +74,49 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose, editi
       newErrors.color = "Select a valid color";
     }
 
+    const isDebt = type === "credit" || type === "loan";
+    let parsedInterest: number | undefined;
+    let parsedLimit: number | undefined;
+    let parsedMinPay: number | undefined;
+    let parsedDue: number | undefined;
+
+    if (isDebt) {
+      if (interestRate.trim()) {
+        parsedInterest = parseFloat(interestRate);
+        if (isNaN(parsedInterest)) newErrors.interestRate = "Invalid rate";
+      }
+      if (creditLimit.trim() && type === "credit") {
+        parsedLimit = parseFloat(creditLimit);
+        if (isNaN(parsedLimit)) newErrors.creditLimit = "Invalid limit";
+      }
+      if (minimumPayment.trim()) {
+        parsedMinPay = parseFloat(minimumPayment);
+        if (isNaN(parsedMinPay)) newErrors.minimumPayment = "Invalid amount";
+      }
+      if (dueDate.trim()) {
+        parsedDue = parseInt(dueDate, 10);
+        if (isNaN(parsedDue) || parsedDue < 1 || parsedDue > 31) newErrors.dueDate = "Must be 1-31";
+      }
+    }
+
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
       return;
     }
 
-    const accountData = {
+    const accountData: Omit<Account, "id"> = {
       name: name.trim(),
       type,
-      balance: type === "credit" && parsedBalance > 0 ? -preciseRound(parsedBalance) : preciseRound(parsedBalance),
+      balance: isDebt && parsedBalance > 0 ? -preciseRound(parsedBalance) : preciseRound(parsedBalance),
       color
     };
+
+    if (isDebt) {
+      if (parsedInterest !== undefined) accountData.interestRate = parsedInterest;
+      if (parsedLimit !== undefined && type === "credit") accountData.creditLimit = parsedLimit;
+      if (parsedMinPay !== undefined) accountData.minimumPayment = parsedMinPay;
+      if (parsedDue !== undefined) accountData.dueDate = parsedDue;
+    }
 
     if (editingWallet) {
       editAccount({ ...accountData, id: editingWallet.id });
@@ -94,7 +138,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose, editi
       />
 
       {/* Modal Box */}
-      <div className="bg-bg-panel border border-border-subtle rounded-card w-full max-w-sm relative z-10 glass-border p-5 shadow-2xl flex flex-col">
+      <div className="bg-bg-panel border border-border-subtle rounded-card w-full max-w-sm relative z-10 glass-border p-5 shadow-2xl flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="flex justify-between items-center pb-3 border-b border-border-subtle shrink-0">
           <h2 className="text-xs font-mono font-bold tracking-wider uppercase text-zinc-400">
@@ -142,14 +186,15 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose, editi
             >
               <option value="checking">Checking</option>
               <option value="savings">Savings</option>
-              <option value="credit">Credit Card</option>
               <option value="investment">Investment</option>
+              <option value="credit">Credit Card</option>
+              <option value="loan">Loan / Mortgage</option>
             </select>
           </div>
 
           <div>
             <label className="block text-[9px] font-mono uppercase tracking-wider text-zinc-500 mb-1">
-              Initial Balance (LKR)
+              {type === "credit" || type === "loan" ? "Current Balance (Owed)" : "Initial Balance"} (LKR)
             </label>
             <input
               type="number"
@@ -168,6 +213,66 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose, editi
               <span className="text-[9px] font-mono text-rose-loss mt-0.5 block">{errors.balance}</span>
             )}
           </div>
+
+          {(type === "credit" || type === "loan") && (
+            <div className="grid grid-cols-2 gap-3 p-3 bg-zinc-900/50 rounded-md border border-border-subtle">
+              {type === "credit" && (
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-[9px] font-mono uppercase tracking-wider text-zinc-500 mb-1">Credit Limit</label>
+                  <input
+                    type="number"
+                    placeholder="15000"
+                    step="0.01"
+                    value={creditLimit}
+                    onChange={e => setCreditLimit(e.target.value)}
+                    className="w-full bg-bg-base border border-border-subtle rounded-md px-2.5 py-1.5 text-xs text-white font-mono placeholder-zinc-600 font-medium"
+                  />
+                  {errors.creditLimit && <span className="text-[9px] font-mono text-rose-loss mt-0.5 block">{errors.creditLimit}</span>}
+                </div>
+              )}
+              
+              <div className="col-span-2 sm:col-span-1">
+                <label className="block text-[9px] font-mono uppercase tracking-wider text-zinc-500 mb-1">Interest (APR %)</label>
+                <input
+                  type="number"
+                  placeholder="19.99"
+                  step="0.01"
+                  value={interestRate}
+                  onChange={e => setInterestRate(e.target.value)}
+                  className="w-full bg-bg-base border border-border-subtle rounded-md px-2.5 py-1.5 text-xs text-white font-mono placeholder-zinc-600 font-medium"
+                />
+                {errors.interestRate && <span className="text-[9px] font-mono text-rose-loss mt-0.5 block">{errors.interestRate}</span>}
+              </div>
+
+              <div className="col-span-2 sm:col-span-1">
+                <label className="block text-[9px] font-mono uppercase tracking-wider text-zinc-500 mb-1">Min Payment</label>
+                <input
+                  type="number"
+                  placeholder="50"
+                  step="0.01"
+                  value={minimumPayment}
+                  onChange={e => setMinimumPayment(e.target.value)}
+                  className="w-full bg-bg-base border border-border-subtle rounded-md px-2.5 py-1.5 text-xs text-white font-mono placeholder-zinc-600 font-medium"
+                />
+                {errors.minimumPayment && <span className="text-[9px] font-mono text-rose-loss mt-0.5 block">{errors.minimumPayment}</span>}
+              </div>
+
+              <div className="col-span-2 sm:col-span-1">
+                <label className="block text-[9px] font-mono uppercase tracking-wider text-zinc-500 mb-1">Due Date (1-31)</label>
+                <input
+                  type="number"
+                  placeholder="15"
+                  step="1"
+                  min="1"
+                  max="31"
+                  value={dueDate}
+                  onChange={e => setDueDate(e.target.value)}
+                  className="w-full bg-bg-base border border-border-subtle rounded-md px-2.5 py-1.5 text-xs text-white font-mono placeholder-zinc-600 font-medium"
+                />
+                {errors.dueDate && <span className="text-[9px] font-mono text-rose-loss mt-0.5 block">{errors.dueDate}</span>}
+              </div>
+            </div>
+          )}
 
           <div>
             <label className="block text-[9px] font-mono uppercase tracking-wider text-zinc-500 mb-1">

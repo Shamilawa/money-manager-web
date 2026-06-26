@@ -25,9 +25,10 @@ export interface Transaction {
   id: string;
   title: string;
   amount: number;
-  type: "income" | "expense";
+  type: "income" | "expense" | "transfer";
   category: string;
   accountId: string;
+  toAccountId?: string;
   date: string; // YYYY-MM-DD
   notes?: string;
 }
@@ -35,9 +36,13 @@ export interface Transaction {
 export interface Account {
   id: string;
   name: string;
-  type: "checking" | "savings" | "credit" | "investment";
+  type: "checking" | "savings" | "credit" | "investment" | "loan";
   balance: number;
   color: string;
+  interestRate?: number;
+  creditLimit?: number;
+  minimumPayment?: number;
+  dueDate?: number;
 }
 
 export interface Budget {
@@ -49,7 +54,7 @@ export interface Filters {
   search: string;
   category: string;
   accountId: string;
-  type: "all" | "income" | "expense";
+  type: "all" | "income" | "expense" | "transfer";
   dateRange: "all" | "7days" | "30days" | "thisMonth" | "lastMonth";
   sortBy: "date-desc" | "date-asc" | "amount-desc" | "amount-asc";
 }
@@ -77,7 +82,7 @@ const FinanceContext = createContext<FinanceContextType | undefined>(undefined);
 const INITIAL_ACCOUNTS: Account[] = [
   { id: "acc-1", name: "Chase Checking", type: "checking", balance: 8450.00, color: "#10b981" },
   { id: "acc-2", name: "Ally High-Yield Savings", type: "savings", balance: 25120.00, color: "#34d399" },
-  { id: "acc-3", name: "Amex Gold Card", type: "credit", balance: -1240.00, color: "#f43f5e" },
+  { id: "acc-3", name: "Amex Gold Card", type: "credit", balance: -1240.00, color: "#f43f5e", interestRate: 19.99, creditLimit: 15000, minimumPayment: 50, dueDate: 15 },
   { id: "acc-4", name: "Robinhood Portfolio", type: "investment", balance: 14200.00, color: "#60a5fa" }
 ];
 
@@ -222,7 +227,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const deleteAccount = async (id: string) => {
     setAccounts(prev => prev.filter(a => a.id !== id));
-    setTransactions(prev => prev.filter(t => t.accountId !== id));
+    setTransactions(prev => prev.filter(t => t.accountId !== id && t.toAccountId !== id));
 
     try {
       await dbDeleteAccount(id);
@@ -239,10 +244,15 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     // Optimistic account update
     setAccounts(prev => prev.map(acc => {
-      if (acc.id === roundedTx.accountId) {
-        const factor = roundedTx.type === "income" ? 1 : -1;
-        const delta = preciseRound(roundedTx.amount * factor);
-        return { ...acc, balance: preciseAdd(acc.balance, delta) };
+      if (roundedTx.type === "transfer" && roundedTx.toAccountId) {
+        if (acc.id === roundedTx.accountId) return { ...acc, balance: preciseSubtract(acc.balance, roundedTx.amount) };
+        if (acc.id === roundedTx.toAccountId) return { ...acc, balance: preciseAdd(acc.balance, roundedTx.amount) };
+      } else {
+        if (acc.id === roundedTx.accountId) {
+          const factor = roundedTx.type === "income" ? 1 : -1;
+          const delta = preciseRound(roundedTx.amount * factor);
+          return { ...acc, balance: preciseAdd(acc.balance, delta) };
+        }
       }
       return acc;
     }));
@@ -266,21 +276,36 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     // Optimistic balance updates
     setAccounts(prev => prev.map(acc => {
       let bal = acc.balance;
-      if (acc.id === originalTx.accountId) {
-        const revertFactor = originalTx.type === "income" ? -1 : 1;
-        const revertDelta = preciseRound(originalTx.amount * revertFactor);
-        bal = preciseAdd(bal, revertDelta);
+
+      // Revert original
+      if (originalTx.type === "transfer" && originalTx.toAccountId) {
+        if (acc.id === originalTx.accountId) bal = preciseAdd(bal, originalTx.amount);
+        if (acc.id === originalTx.toAccountId) bal = preciseSubtract(bal, originalTx.amount);
+      } else {
+        if (acc.id === originalTx.accountId) {
+          const revertFactor = originalTx.type === "income" ? -1 : 1;
+          const revertDelta = preciseRound(originalTx.amount * revertFactor);
+          bal = preciseAdd(bal, revertDelta);
+        }
       }
-      if (acc.id === roundedTx.accountId) {
-        const applyFactor = roundedTx.type === "income" ? 1 : -1;
-        const applyDelta = preciseRound(roundedTx.amount * applyFactor);
-        bal = preciseAdd(bal, applyDelta);
+
+      // Apply new
+      if (roundedTx.type === "transfer" && roundedTx.toAccountId) {
+        if (acc.id === roundedTx.accountId) bal = preciseSubtract(bal, roundedTx.amount);
+        if (acc.id === roundedTx.toAccountId) bal = preciseAdd(bal, roundedTx.amount);
+      } else {
+        if (acc.id === roundedTx.accountId) {
+          const applyFactor = roundedTx.type === "income" ? 1 : -1;
+          const applyDelta = preciseRound(roundedTx.amount * applyFactor);
+          bal = preciseAdd(bal, applyDelta);
+        }
       }
+      
       return { ...acc, balance: preciseRound(bal) };
     }));
 
     try {
-      await dbEditTransaction(roundedTx, originalTx.amount, originalTx.type, originalTx.accountId);
+      await dbEditTransaction(roundedTx, originalTx.amount, originalTx.type, originalTx.accountId, originalTx.toAccountId);
     } catch (e) {
       console.error(e);
       await fetchAllData();
@@ -294,16 +319,21 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setTransactions(prev => prev.filter(t => t.id !== id));
 
     setAccounts(prev => prev.map(acc => {
-      if (acc.id === originalTx.accountId) {
-        const factor = originalTx.type === "income" ? -1 : 1;
-        const delta = preciseRound(originalTx.amount * factor);
-        return { ...acc, balance: preciseAdd(acc.balance, delta) };
+      if (originalTx.type === "transfer" && originalTx.toAccountId) {
+        if (acc.id === originalTx.accountId) return { ...acc, balance: preciseAdd(acc.balance, originalTx.amount) };
+        if (acc.id === originalTx.toAccountId) return { ...acc, balance: preciseSubtract(acc.balance, originalTx.amount) };
+      } else {
+        if (acc.id === originalTx.accountId) {
+          const factor = originalTx.type === "income" ? -1 : 1;
+          const delta = preciseRound(originalTx.amount * factor);
+          return { ...acc, balance: preciseAdd(acc.balance, delta) };
+        }
       }
       return acc;
     }));
 
     try {
-      await dbDeleteTransaction(id, originalTx.amount, originalTx.type, originalTx.accountId);
+      await dbDeleteTransaction(id, originalTx.amount, originalTx.type, originalTx.accountId, originalTx.toAccountId);
     } catch (e) {
       console.error(e);
       await fetchAllData();
@@ -315,36 +345,24 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const toAcc = accounts.find(a => a.id === toAccountId);
     if (!fromAcc || !toAcc || amount <= 0) return false;
 
-    if (fromAcc.type !== "credit" && fromAcc.balance < amount) return false;
+    if (fromAcc.type !== "credit" && fromAcc.type !== "loan" && fromAcc.balance < amount) return false;
 
     const roundedAmount = preciseRound(amount);
-
-    // Optimistic
-    setAccounts(prev => prev.map(acc => {
-      if (acc.id === fromAccountId) return { ...acc, balance: preciseSubtract(acc.balance, roundedAmount) };
-      if (acc.id === toAccountId) return { ...acc, balance: preciseAdd(acc.balance, roundedAmount) };
-      return acc;
-    }));
-
     const dateStr = new Date().toISOString().split("T")[0];
-    const transferOutTx: Omit<Transaction, "id"> = {
+    
+    const tx: Omit<Transaction, "id"> = {
       title: `Transfer to ${toAcc.name}`,
-      amount: roundedAmount, type: "expense", category: "Other Expenses", accountId: fromAccountId, date: dateStr, notes: `Internal transfer`
-    };
-    const transferInTx: Omit<Transaction, "id"> = {
-      title: `Transfer from ${fromAcc.name}`,
-      amount: roundedAmount, type: "income", category: "Other Income", accountId: toAccountId, date: dateStr, notes: `Internal transfer`
+      amount: roundedAmount,
+      type: "transfer",
+      category: "Transfer",
+      accountId: fromAccountId,
+      toAccountId: toAccountId,
+      date: dateStr,
+      notes: `Internal transfer`
     };
 
-    setTransactions(prev => [{...transferOutTx, id: `temp-out-${Date.now()}`}, {...transferInTx, id: `temp-in-${Date.now()}`}, ...prev]);
-
-    try {
-      await dbTransferFunds(fromAccountId, toAccountId, roundedAmount, transferOutTx, transferInTx);
-      await fetchAllData(); // Reload to get real IDs
-    } catch (e) {
-      console.error(e);
-      await fetchAllData();
-    }
+    // Use optimistic addTransaction directly
+    await addTransaction(tx);
     return true;
   };
 

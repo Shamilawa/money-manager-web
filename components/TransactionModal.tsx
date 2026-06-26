@@ -16,9 +16,10 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
 
   const [title, setTitle] = useState("");
   const [amount, setAmount] = useState("");
-  const [type, setType] = useState<"income" | "expense">("expense");
+  const [type, setType] = useState<"income" | "expense" | "transfer">("expense");
   const [category, setCategory] = useState("");
   const [accountId, setAccountId] = useState("");
+  const [toAccountId, setToAccountId] = useState("");
   const [date, setDate] = useState("");
   const [notes, setNotes] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -31,14 +32,16 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
       setType(editingTransaction.type);
       setCategory(editingTransaction.category);
       setAccountId(editingTransaction.accountId);
+      setToAccountId(editingTransaction.toAccountId || "");
       setDate(editingTransaction.date);
       setNotes(editingTransaction.notes || "");
     } else {
       setTitle("");
       setAmount("");
       setType("expense");
-      setCategory("");
+      setCategory(EXPENSE_CATEGORIES[0]);
       setAccountId(accounts[0]?.id || "");
+      setToAccountId("");
       setDate(new Date().toISOString().split("T")[0]);
       setNotes("");
     }
@@ -48,7 +51,11 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
   // Adjust category if type changes
   useEffect(() => {
     if (!editingTransaction) {
-      setCategory(type === "income" ? INCOME_CATEGORIES[0] : EXPENSE_CATEGORIES[0]);
+      if (type === "transfer") {
+        setCategory("Transfer");
+      } else {
+        setCategory(type === "income" ? INCOME_CATEGORIES[0] : EXPENSE_CATEGORIES[0]);
+      }
     }
   }, [type, editingTransaction]);
 
@@ -74,7 +81,9 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
       newErrors.amount = "Enter a valid positive number";
     }
 
-    if (!accountId) newErrors.accountId = "Account wallet selection is required";
+    if (!accountId) newErrors.accountId = "Source wallet is required";
+    if (type === "transfer" && !toAccountId) newErrors.toAccountId = "Destination wallet is required";
+    if (type === "transfer" && accountId === toAccountId) newErrors.toAccountId = "Cannot transfer to same wallet";
     if (!date) newErrors.date = "Transaction date is required";
 
     if (Object.keys(newErrors).length > 0) {
@@ -82,7 +91,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
       return;
     }
 
-    const txPayload = {
+    const txPayload: Omit<Transaction, "id"> = {
       title: title.trim(),
       amount: preciseRound(parsedAmount),
       type,
@@ -91,6 +100,10 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
       date,
       notes: notes.trim() || undefined
     };
+
+    if (type === "transfer") {
+      txPayload.toAccountId = toAccountId;
+    }
 
     if (editingTransaction) {
       editTransaction({
@@ -104,7 +117,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
     onClose();
   };
 
-  const categories = type === "income" ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+  const categories = type === "income" ? INCOME_CATEGORIES : (type === "expense" ? EXPENSE_CATEGORIES : ["Transfer"]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -136,7 +149,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
             <span className="block text-[9px] font-mono uppercase tracking-wider text-zinc-500">
               Transaction Flow
             </span>
-            <div className="grid grid-cols-2 gap-2 p-1 bg-zinc-950/70 border border-border-subtle rounded-md">
+            <div className="grid grid-cols-3 gap-2 p-1 bg-zinc-950/70 border border-border-subtle rounded-md">
               <button
                 type="button"
                 onClick={() => setType("expense")}
@@ -146,7 +159,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
                     : "text-zinc-500 hover:text-zinc-300"
                 }`}
               >
-                Debit (Expense)
+                Debit (Out)
               </button>
               <button
                 type="button"
@@ -157,7 +170,18 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
                     : "text-zinc-500 hover:text-zinc-300"
                 }`}
               >
-                Credit (Income)
+                Credit (In)
+              </button>
+              <button
+                type="button"
+                onClick={() => setType("transfer")}
+                className={`py-1.5 text-xs font-bold rounded-sm uppercase cursor-pointer btn-tactile tracking-wide ${
+                  type === "transfer"
+                    ? "bg-blue-500/10 border border-blue-500/20 text-blue-400"
+                    : "text-zinc-500 hover:text-zinc-300"
+                }`}
+              >
+                Transfer
               </button>
             </div>
           </div>
@@ -211,46 +235,105 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
 
           {/* Category & Wallet Selector Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[9px] font-mono uppercase tracking-wider text-zinc-500 mb-1">
-                Ledger Category
-              </label>
-              <select
-                value={category}
-                onChange={e => setCategory(e.target.value)}
-                className="w-full bg-bg-base border border-border-subtle rounded-md px-2 py-1.5 text-xs text-white font-medium cursor-pointer"
-              >
-                {categories.map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </select>
-            </div>
+            {type !== "transfer" ? (
+              <>
+                <div>
+                  <label className="block text-[9px] font-mono uppercase tracking-wider text-zinc-500 mb-1">
+                    Ledger Category
+                  </label>
+                  <select
+                    value={category}
+                    onChange={e => setCategory(e.target.value)}
+                    className="w-full bg-bg-base border border-border-subtle rounded-md px-2 py-1.5 text-xs text-white font-medium cursor-pointer"
+                  >
+                    {categories.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
 
-            <div>
-              <label className="block text-[9px] font-mono uppercase tracking-wider text-zinc-500 mb-1">
-                Asset Wallet
-              </label>
-              <select
-                value={accountId}
-                onChange={e => {
-                  setAccountId(e.target.value);
-                  if (errors.accountId) setErrors(prev => ({ ...prev, accountId: "" }));
-                }}
-                className={`w-full bg-bg-base border rounded-md px-2 py-1.5 text-xs text-white font-medium cursor-pointer ${
-                  errors.accountId ? "border-rose-loss" : "border-border-subtle"
-                }`}
-              >
-                <option value="">Choose wallet</option>
-                {accounts.map(acc => (
-                  <option key={acc.id} value={acc.id}>
-                    {acc.name}
-                  </option>
-                ))}
-              </select>
-              {errors.accountId && (
-                <span className="text-[9px] font-mono text-rose-loss mt-0.5 block">{errors.accountId}</span>
-              )}
-            </div>
+                <div>
+                  <label className="block text-[9px] font-mono uppercase tracking-wider text-zinc-500 mb-1">
+                    Asset Wallet
+                  </label>
+                  <select
+                    value={accountId}
+                    onChange={e => {
+                      setAccountId(e.target.value);
+                      if (errors.accountId) setErrors(prev => ({ ...prev, accountId: "" }));
+                    }}
+                    className={`w-full bg-bg-base border rounded-md px-2 py-1.5 text-xs text-white font-medium cursor-pointer ${
+                      errors.accountId ? "border-rose-loss" : "border-border-subtle"
+                    }`}
+                  >
+                    <option value="">Choose wallet</option>
+                    {accounts.map(acc => (
+                      <option key={acc.id} value={acc.id}>
+                        {acc.name}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.accountId && (
+                    <span className="text-[9px] font-mono text-rose-loss mt-0.5 block">{errors.accountId}</span>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <label className="block text-[9px] font-mono uppercase tracking-wider text-zinc-500 mb-1">
+                    From Wallet (Source)
+                  </label>
+                  <select
+                    value={accountId}
+                    onChange={e => {
+                      setAccountId(e.target.value);
+                      if (errors.accountId) setErrors(prev => ({ ...prev, accountId: "" }));
+                      if (errors.toAccountId) setErrors(prev => ({ ...prev, toAccountId: "" }));
+                    }}
+                    className={`w-full bg-bg-base border rounded-md px-2 py-1.5 text-xs text-white font-medium cursor-pointer ${
+                      errors.accountId ? "border-rose-loss" : "border-border-subtle"
+                    }`}
+                  >
+                    <option value="">Select source</option>
+                    {accounts.map(acc => (
+                      <option key={acc.id} value={acc.id}>
+                        {acc.name}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.accountId && (
+                    <span className="text-[9px] font-mono text-rose-loss mt-0.5 block">{errors.accountId}</span>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-[9px] font-mono uppercase tracking-wider text-zinc-500 mb-1">
+                    To Wallet (Destination)
+                  </label>
+                  <select
+                    value={toAccountId}
+                    onChange={e => {
+                      setToAccountId(e.target.value);
+                      if (errors.toAccountId) setErrors(prev => ({ ...prev, toAccountId: "" }));
+                    }}
+                    className={`w-full bg-bg-base border rounded-md px-2 py-1.5 text-xs text-white font-medium cursor-pointer ${
+                      errors.toAccountId ? "border-rose-loss" : "border-border-subtle"
+                    }`}
+                  >
+                    <option value="">Select destination</option>
+                    {accounts.map(acc => (
+                      <option key={acc.id} value={acc.id}>
+                        {acc.name}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.toAccountId && (
+                    <span className="text-[9px] font-mono text-rose-loss mt-0.5 block">{errors.toAccountId}</span>
+                  )}
+                </div>
+              </>
+            )}
           </div>
 
           {/* Date Selector */}
