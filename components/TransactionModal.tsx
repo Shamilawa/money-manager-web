@@ -3,6 +3,7 @@ import React, { useState, useEffect } from "react";
 import { useFinance, EXPENSE_CATEGORIES, INCOME_CATEGORIES } from "../context/FinanceContext";
 import type { Transaction } from "../context/FinanceContext";
 import { X, Check } from "@phosphor-icons/react";
+import { preciseRound } from "../utils/math";
 
 interface TransactionModalProps {
   isOpen: boolean;
@@ -83,7 +84,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
 
     const txPayload = {
       title: title.trim(),
-      amount: parsedAmount,
+      amount: preciseRound(parsedAmount),
       type,
       category,
       accountId,

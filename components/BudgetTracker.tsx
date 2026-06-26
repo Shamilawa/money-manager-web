@@ -2,6 +2,7 @@
 import React from "react";
 import { useFinance } from "../context/FinanceContext";
 import { ListBullets, Warning } from "@phosphor-icons/react";
+import { preciseSum, parseLocalDate } from "../utils/math";
 
 export const BudgetTracker: React.FC = () => {
   const { budgets, transactions } = useFinance();
@@ -10,7 +11,7 @@ export const BudgetTracker: React.FC = () => {
   const today = new Date();
   const currentMonthTxs = transactions.filter(tx => {
     if (tx.type !== "expense") return false;
-    const txDate = new Date(tx.date);
+    const txDate = parseLocalDate(tx.date);
     return (
       txDate.getMonth() === today.getMonth() &&
       txDate.getFullYear() === today.getFullYear()
@@ -18,9 +19,11 @@ export const BudgetTracker: React.FC = () => {
   });
 
   const getExpensesByCategory = (category: string): number => {
-    return currentMonthTxs
-      .filter(tx => tx.category === category)
-      .reduce((sum, tx) => sum + tx.amount, 0);
+    return preciseSum(
+      currentMonthTxs
+        .filter(tx => tx.category === category)
+        .map(tx => tx.amount)
+    );
   };
 
   return (
@@ -85,4 +88,3 @@ export const BudgetTracker: React.FC = () => {
     </div>
   );
 };
-

@@ -3,6 +3,7 @@ import React from "react";
 import { useFinance } from "../context/FinanceContext";
 import { TrendUp, TrendDown, CurrencyDollar, ArrowUpRight, ArrowDownLeft } from "@phosphor-icons/react";
 import { motion, useReducedMotion } from "motion/react";
+import { preciseAdd, preciseSubtract, preciseSum, parseLocalDate, getCalendarDaysDifference } from "../utils/math";
 
 export const Overview: React.FC = () => {
   const { accounts, getFilteredTransactions } = useFinance();
@@ -10,17 +11,21 @@ export const Overview: React.FC = () => {
   const filteredTxs = getFilteredTransactions();
 
   // Calculations
-  const netWorth = accounts.reduce((sum, acc) => sum + acc.balance, 0);
+  const netWorth = preciseSum(accounts.map(acc => acc.balance));
   
-  const totalIncome = filteredTxs
-    .filter(tx => tx.type === "income")
-    .reduce((sum, tx) => sum + tx.amount, 0);
+  const totalIncome = preciseSum(
+    filteredTxs
+      .filter(tx => tx.type === "income")
+      .map(tx => tx.amount)
+  );
 
-  const totalExpense = filteredTxs
-    .filter(tx => tx.type === "expense")
-    .reduce((sum, tx) => sum + tx.amount, 0);
+  const totalExpense = preciseSum(
+    filteredTxs
+      .filter(tx => tx.type === "expense")
+      .map(tx => tx.amount)
+  );
 
-  const netSavings = totalIncome - totalExpense;
+  const netSavings = preciseSubtract(totalIncome, totalExpense);
   const savingsRate = totalIncome > 0 ? (netSavings / totalIncome) * 100 : 0;
 
   // Helper to generate sparkline SVG path coordinates for last 10 days
@@ -33,17 +38,16 @@ export const Overview: React.FC = () => {
     today.setHours(23, 59, 59, 999);
 
     filteredTxs.forEach(tx => {
-      const txDate = new Date(tx.date);
-      const diffTime = today.getTime() - txDate.getTime();
-      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+      const txDate = parseLocalDate(tx.date);
+      const diffDays = getCalendarDaysDifference(today, txDate);
       
       if (diffDays >= 0 && diffDays < days) {
         const index = days - 1 - diffDays; // reverse order so left is past, right is today
         if (type === "networth") {
           // cumulative effect or just general activity
-          values[index] += tx.type === "income" ? tx.amount : -tx.amount;
+          values[index] = tx.type === "income" ? preciseAdd(values[index], tx.amount) : preciseSubtract(values[index], tx.amount);
         } else if (tx.type === type) {
-          values[index] += tx.amount;
+          values[index] = preciseAdd(values[index], tx.amount);
         }
       }
     });
@@ -55,7 +59,7 @@ export const Overview: React.FC = () => {
       for (let i = days - 1; i >= 0; i--) {
         const diff = values[i];
         values[i] = temp;
-        temp -= diff; // reverse the transaction
+        temp = preciseSubtract(temp, diff); // reverse the transaction
       }
     }
 
@@ -80,9 +84,9 @@ export const Overview: React.FC = () => {
       opacity: 1,
       y: 0,
       transition: {
-        duration: 0.45,
-        delay: custom * 0.08,
-        ease: [0.16, 1, 0.3, 1] as const
+         duration: 0.45,
+         delay: custom * 0.08,
+         ease: [0.16, 1, 0.3, 1] as const
       }
     })
   };
@@ -242,4 +246,3 @@ export const Overview: React.FC = () => {
     </div>
   );
 };
-

@@ -4,6 +4,7 @@ import { sql } from "@vercel/postgres";
 import { revalidatePath } from "next/cache";
 
 import type { Transaction, Account, Budget } from "../context/FinanceContext";
+import { preciseRound } from "../utils/math";
 
 export async function getAccounts(): Promise<Account[]> {
   const { rows } = await sql`
@@ -37,9 +38,10 @@ export async function getBudgets(): Promise<Budget[]> {
 }
 
 export async function addAccount(acc: Omit<Account, "id">) {
+  const roundedBalance = preciseRound(acc.balance);
   const { rows } = await sql`
     INSERT INTO accounts (name, type, balance, color)
-    VALUES (${acc.name}, ${acc.type}, ${acc.balance}, ${acc.color})
+    VALUES (${acc.name}, ${acc.type}, ${roundedBalance}, ${acc.color})
     RETURNING id
   `;
   revalidatePath("/");
@@ -47,9 +49,10 @@ export async function addAccount(acc: Omit<Account, "id">) {
 }
 
 export async function editAccount(acc: Account) {
+  const roundedBalance = preciseRound(acc.balance);
   await sql`
     UPDATE accounts
-    SET name = ${acc.name}, type = ${acc.type}, balance = ${acc.balance}, color = ${acc.color}
+    SET name = ${acc.name}, type = ${acc.type}, balance = ${roundedBalance}, color = ${acc.color}
     WHERE id = ${acc.id}
   `;
   revalidatePath("/");
@@ -61,14 +64,15 @@ export async function deleteAccount(id: string) {
 }
 
 export async function addTransaction(tx: Omit<Transaction, "id">) {
+  const roundedAmount = preciseRound(tx.amount);
   const { rows } = await sql`
     INSERT INTO transactions (title, amount, type, category, account_id, date, notes)
-    VALUES (${tx.title}, ${tx.amount}, ${tx.type}, ${tx.category}, ${tx.accountId}, ${tx.date}, ${tx.notes})
+    VALUES (${tx.title}, ${roundedAmount}, ${tx.type}, ${tx.category}, ${tx.accountId}, ${tx.date}, ${tx.notes})
     RETURNING id
   `;
   
   const factor = tx.type === "income" ? 1 : -1;
-  const delta = tx.amount * factor;
+  const delta = preciseRound(roundedAmount * factor);
   await sql`
     UPDATE accounts
     SET balance = balance + ${delta}
@@ -80,22 +84,24 @@ export async function addTransaction(tx: Omit<Transaction, "id">) {
 }
 
 export async function editTransaction(tx: Transaction, originalAmount: number, originalType: string, originalAccountId: string) {
+  const roundedOriginalAmount = preciseRound(originalAmount);
   const revertFactor = originalType === "income" ? -1 : 1;
-  const revertDelta = originalAmount * revertFactor;
+  const revertDelta = preciseRound(roundedOriginalAmount * revertFactor);
   await sql`
     UPDATE accounts
     SET balance = balance + ${revertDelta}
     WHERE id = ${originalAccountId}
   `;
 
+  const roundedAmount = preciseRound(tx.amount);
   await sql`
     UPDATE transactions
-    SET title = ${tx.title}, amount = ${tx.amount}, type = ${tx.type}, category = ${tx.category}, account_id = ${tx.accountId}, date = ${tx.date}, notes = ${tx.notes}
+    SET title = ${tx.title}, amount = ${roundedAmount}, type = ${tx.type}, category = ${tx.category}, account_id = ${tx.accountId}, date = ${tx.date}, notes = ${tx.notes}
     WHERE id = ${tx.id}
   `;
 
   const applyFactor = tx.type === "income" ? 1 : -1;
-  const applyDelta = tx.amount * applyFactor;
+  const applyDelta = preciseRound(roundedAmount * applyFactor);
   await sql`
     UPDATE accounts
     SET balance = balance + ${applyDelta}
@@ -108,8 +114,9 @@ export async function editTransaction(tx: Transaction, originalAmount: number, o
 export async function deleteTransaction(id: string, amount: number, type: string, accountId: string) {
   await sql`DELETE FROM transactions WHERE id = ${id}`;
 
+  const roundedAmount = preciseRound(amount);
   const revertFactor = type === "income" ? -1 : 1;
-  const revertDelta = amount * revertFactor;
+  const revertDelta = preciseRound(roundedAmount * revertFactor);
   await sql`
     UPDATE accounts
     SET balance = balance + ${revertDelta}
@@ -120,17 +127,21 @@ export async function deleteTransaction(id: string, amount: number, type: string
 }
 
 export async function transferFunds(fromAccountId: string, toAccountId: string, amount: number, transferOutTx: Omit<Transaction, "id">, transferInTx: Omit<Transaction, "id">) {
-  await sql`UPDATE accounts SET balance = balance - ${amount} WHERE id = ${fromAccountId}`;
-  await sql`UPDATE accounts SET balance = balance + ${amount} WHERE id = ${toAccountId}`;
+  const roundedAmount = preciseRound(amount);
+  const roundedOutAmount = preciseRound(transferOutTx.amount);
+  const roundedInAmount = preciseRound(transferInTx.amount);
+
+  await sql`UPDATE accounts SET balance = balance - ${roundedAmount} WHERE id = ${fromAccountId}`;
+  await sql`UPDATE accounts SET balance = balance + ${roundedAmount} WHERE id = ${toAccountId}`;
 
   await sql`
     INSERT INTO transactions (title, amount, type, category, account_id, date, notes)
-    VALUES (${transferOutTx.title}, ${transferOutTx.amount}, ${transferOutTx.type}, ${transferOutTx.category}, ${transferOutTx.accountId}, ${transferOutTx.date}, ${transferOutTx.notes})
+    VALUES (${transferOutTx.title}, ${roundedOutAmount}, ${transferOutTx.type}, ${transferOutTx.category}, ${transferOutTx.accountId}, ${transferOutTx.date}, ${transferOutTx.notes})
   `;
 
   await sql`
     INSERT INTO transactions (title, amount, type, category, account_id, date, notes)
-    VALUES (${transferInTx.title}, ${transferInTx.amount}, ${transferInTx.type}, ${transferInTx.category}, ${transferInTx.accountId}, ${transferInTx.date}, ${transferInTx.notes})
+    VALUES (${transferInTx.title}, ${roundedInAmount}, ${transferInTx.type}, ${transferInTx.category}, ${transferInTx.accountId}, ${transferInTx.date}, ${transferInTx.notes})
   `;
 
   revalidatePath("/");

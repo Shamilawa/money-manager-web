@@ -13,6 +13,13 @@ import {
   transferFunds as dbTransferFunds,
   setupInitialBudgets
 } from "../app/actions";
+import { 
+  preciseAdd, 
+  preciseSubtract, 
+  preciseRound, 
+  parseLocalDate, 
+  getCalendarDaysDifference 
+} from "../utils/math";
 
 export interface Transaction {
   id: string;
@@ -148,10 +155,10 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const fetchedTransactions = await getTransactions();
       const fetchedBudgets = await getBudgets();
 
-      // Defensively parse floats since DB drivers sometimes return strings for DECIMAL types
-      const processedAccounts = fetchedAccounts.map(a => ({ ...a, balance: Number(a.balance) }));
-      const processedTransactions = fetchedTransactions.map(t => ({ ...t, amount: Number(t.amount) }));
-      const processedBudgets = fetchedBudgets.map(b => ({ ...b, limit: Number(b.limit) }));
+      // Defensively parse precise floats since DB drivers sometimes return strings for DECIMAL types
+      const processedAccounts = fetchedAccounts.map(a => ({ ...a, balance: preciseRound(a.balance) }));
+      const processedTransactions = fetchedTransactions.map(t => ({ ...t, amount: preciseRound(t.amount) }));
+      const processedBudgets = fetchedBudgets.map(b => ({ ...b, limit: preciseRound(b.limit) }));
 
       if (processedAccounts.length === 0) {
         await seedDatabase();
@@ -188,7 +195,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const addAccount = async (accData: Omit<Account, "id">) => {
     const tempId = `temp-${Date.now()}`;
-    const newAcc = { ...accData, id: tempId };
+    const newAcc = { ...accData, id: tempId, balance: preciseRound(accData.balance) };
     setAccounts(prev => [...prev, newAcc]);
 
     try {
@@ -201,11 +208,12 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   const editAccount = async (updatedAcc: Account) => {
-    const original = accounts.find(a => a.id === updatedAcc.id);
-    setAccounts(prev => prev.map(a => a.id === updatedAcc.id ? updatedAcc : a));
+    const roundedAcc = { ...updatedAcc, balance: preciseRound(updatedAcc.balance) };
+    const original = accounts.find(a => a.id === roundedAcc.id);
+    setAccounts(prev => prev.map(a => a.id === roundedAcc.id ? roundedAcc : a));
 
     try {
-      await dbEditAccount(updatedAcc);
+      await dbEditAccount(roundedAcc);
     } catch (e) {
       console.error(e);
       if (original) setAccounts(prev => prev.map(a => a.id === original.id ? original : a));
@@ -226,14 +234,15 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const addTransaction = async (txData: Omit<Transaction, "id">) => {
     const tempId = `temp-${Date.now()}`;
-    const newTx = { ...txData, id: tempId };
-    setTransactions(prev => [newTx, ...prev]);
+    const roundedTx = { ...txData, id: tempId, amount: preciseRound(txData.amount) };
+    setTransactions(prev => [roundedTx, ...prev]);
 
     // Optimistic account update
     setAccounts(prev => prev.map(acc => {
-      if (acc.id === txData.accountId) {
-        const factor = txData.type === "income" ? 1 : -1;
-        return { ...acc, balance: acc.balance + (txData.amount * factor) };
+      if (acc.id === roundedTx.accountId) {
+        const factor = roundedTx.type === "income" ? 1 : -1;
+        const delta = preciseRound(roundedTx.amount * factor);
+        return { ...acc, balance: preciseAdd(acc.balance, delta) };
       }
       return acc;
     }));
@@ -248,27 +257,30 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   const editTransaction = async (updatedTx: Transaction) => {
-    const originalTx = transactions.find(t => t.id === updatedTx.id);
+    const roundedTx = { ...updatedTx, amount: preciseRound(updatedTx.amount) };
+    const originalTx = transactions.find(t => t.id === roundedTx.id);
     if (!originalTx) return;
 
-    setTransactions(prev => prev.map(t => t.id === updatedTx.id ? updatedTx : t));
+    setTransactions(prev => prev.map(t => t.id === roundedTx.id ? roundedTx : t));
 
     // Optimistic balance updates
     setAccounts(prev => prev.map(acc => {
       let bal = acc.balance;
       if (acc.id === originalTx.accountId) {
         const revertFactor = originalTx.type === "income" ? -1 : 1;
-        bal += (originalTx.amount * revertFactor);
+        const revertDelta = preciseRound(originalTx.amount * revertFactor);
+        bal = preciseAdd(bal, revertDelta);
       }
-      if (acc.id === updatedTx.accountId) {
-        const applyFactor = updatedTx.type === "income" ? 1 : -1;
-        bal += (updatedTx.amount * applyFactor);
+      if (acc.id === roundedTx.accountId) {
+        const applyFactor = roundedTx.type === "income" ? 1 : -1;
+        const applyDelta = preciseRound(roundedTx.amount * applyFactor);
+        bal = preciseAdd(bal, applyDelta);
       }
-      return { ...acc, balance: bal };
+      return { ...acc, balance: preciseRound(bal) };
     }));
 
     try {
-      await dbEditTransaction(updatedTx, originalTx.amount, originalTx.type, originalTx.accountId);
+      await dbEditTransaction(roundedTx, originalTx.amount, originalTx.type, originalTx.accountId);
     } catch (e) {
       console.error(e);
       await fetchAllData();
@@ -284,7 +296,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setAccounts(prev => prev.map(acc => {
       if (acc.id === originalTx.accountId) {
         const factor = originalTx.type === "income" ? -1 : 1;
-        return { ...acc, balance: acc.balance + (originalTx.amount * factor) };
+        const delta = preciseRound(originalTx.amount * factor);
+        return { ...acc, balance: preciseAdd(acc.balance, delta) };
       }
       return acc;
     }));
@@ -304,27 +317,29 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     if (fromAcc.type !== "credit" && fromAcc.balance < amount) return false;
 
+    const roundedAmount = preciseRound(amount);
+
     // Optimistic
     setAccounts(prev => prev.map(acc => {
-      if (acc.id === fromAccountId) return { ...acc, balance: acc.balance - amount };
-      if (acc.id === toAccountId) return { ...acc, balance: acc.balance + amount };
+      if (acc.id === fromAccountId) return { ...acc, balance: preciseSubtract(acc.balance, roundedAmount) };
+      if (acc.id === toAccountId) return { ...acc, balance: preciseAdd(acc.balance, roundedAmount) };
       return acc;
     }));
 
     const dateStr = new Date().toISOString().split("T")[0];
     const transferOutTx: Omit<Transaction, "id"> = {
       title: `Transfer to ${toAcc.name}`,
-      amount, type: "expense", category: "Other Expenses", accountId: fromAccountId, date: dateStr, notes: `Internal transfer`
+      amount: roundedAmount, type: "expense", category: "Other Expenses", accountId: fromAccountId, date: dateStr, notes: `Internal transfer`
     };
     const transferInTx: Omit<Transaction, "id"> = {
       title: `Transfer from ${fromAcc.name}`,
-      amount, type: "income", category: "Other Income", accountId: toAccountId, date: dateStr, notes: `Internal transfer`
+      amount: roundedAmount, type: "income", category: "Other Income", accountId: toAccountId, date: dateStr, notes: `Internal transfer`
     };
 
     setTransactions(prev => [{...transferOutTx, id: `temp-out-${Date.now()}`}, {...transferInTx, id: `temp-in-${Date.now()}`}, ...prev]);
 
     try {
-      await dbTransferFunds(fromAccountId, toAccountId, amount, transferOutTx, transferInTx);
+      await dbTransferFunds(fromAccountId, toAccountId, roundedAmount, transferOutTx, transferInTx);
       await fetchAllData(); // Reload to get real IDs
     } catch (e) {
       console.error(e);
@@ -345,8 +360,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (filters.dateRange !== "all") {
       const today = new Date();
       result = result.filter(tx => {
-        const txDate = new Date(tx.date);
-        const diffDays = Math.ceil(Math.abs(today.getTime() - txDate.getTime()) / (1000 * 60 * 60 * 24));
+        const txDate = parseLocalDate(tx.date);
+        const diffDays = Math.abs(getCalendarDaysDifference(today, txDate));
         if (filters.dateRange === "7days") return diffDays <= 7;
         if (filters.dateRange === "30days") return diffDays <= 30;
         if (filters.dateRange === "thisMonth") return txDate.getMonth() === today.getMonth() && txDate.getFullYear() === today.getFullYear();
@@ -359,18 +374,15 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       });
     }
     result.sort((a, b) => {
-      if (filters.sortBy === "date-asc") return new Date(a.date).getTime() - new Date(b.date).getTime();
+      if (filters.sortBy === "date-asc") return a.date.localeCompare(b.date);
       if (filters.sortBy === "amount-desc") return b.amount - a.amount;
       if (filters.sortBy === "amount-asc") return a.amount - b.amount;
-      return new Date(b.date).getTime() - new Date(a.date).getTime();
+      return b.date.localeCompare(a.date);
     });
     return result;
   };
 
   const resetData = async () => {
-    // Note: A true DB reset would DROP and recreate tables.
-    // For now, we will just call seedDatabase, but ideally we'd clear first.
-    // Left simple for this exercise.
     await fetchAllData();
   };
 

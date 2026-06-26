@@ -1,6 +1,7 @@
 "use client";
 import React, { useState } from "react";
 import { useFinance, type Account } from "../context/FinanceContext";
+import { preciseRound } from "../utils/math";
 import { ArrowsLeftRight, Bank, CreditCard, PiggyBank, ChartLineUp, ArrowRight, Plus, PencilSimple } from "@phosphor-icons/react";
 
 interface AccountSummaryProps {
@@ -53,7 +54,8 @@ export const AccountSummary: React.FC<AccountSummaryProps> = ({ onAddWallet, onE
       return;
     }
 
-    const completed = transferFunds(fromAccount, toAccount, value);
+    const roundedValue = preciseRound(value);
+    const completed = transferFunds(fromAccount, toAccount, roundedValue);
     if (!completed) {
       setErrors({ form: "Insufficient funds in source account" });
       return;

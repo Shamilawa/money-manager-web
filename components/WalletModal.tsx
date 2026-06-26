@@ -3,6 +3,7 @@ import React, { useState, useEffect } from "react";
 import { useFinance } from "../context/FinanceContext";
 import type { Account } from "../context/FinanceContext";
 import { X, Check } from "@phosphor-icons/react";
+import { preciseRound } from "../utils/math";
 
 interface WalletModalProps {
   isOpen: boolean;
@@ -69,7 +70,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose, editi
     const accountData = {
       name: name.trim(),
       type,
-      balance: parsedBalance,
+      balance: type === "credit" && parsedBalance > 0 ? -preciseRound(parsedBalance) : preciseRound(parsedBalance),
       color
     };
 

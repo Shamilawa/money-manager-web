@@ -1,6 +1,7 @@
 "use client";
 import React from "react";
 import { useFinance } from "../context/FinanceContext";
+import { preciseSum } from "../utils/math";
 import { 
   Wallet, 
   Funnel, 
@@ -22,7 +23,7 @@ export const Sidebar: React.FC = () => {
     setFilters(prev => ({ ...prev, accountId }));
   };
 
-  const totalBalance = accounts.reduce((sum, acc) => sum + acc.balance, 0);
+  const totalBalance = preciseSum(accounts.map(acc => acc.balance));
 
   return (
     <aside className="w-68 bg-bg-sidebar border-r border-border-subtle flex flex-col h-full shrink-0 select-none">

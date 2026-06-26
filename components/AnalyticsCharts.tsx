@@ -2,6 +2,7 @@
 import React, { useState } from "react";
 import { useFinance, EXPENSE_CATEGORIES } from "../context/FinanceContext";
 import { ChartPieSlice, ChartBar, ChartLine, Calendar } from "@phosphor-icons/react";
+import { preciseAdd, preciseSubtract, preciseSum } from "../utils/math";
 
 export const AnalyticsCharts: React.FC = () => {
   const { transactions, getFilteredTransactions, accounts } = useFinance();
@@ -13,12 +14,14 @@ export const AnalyticsCharts: React.FC = () => {
 
   // 1. DATA PREPARATION: DONUT
   const expenseTxs = filteredTxs.filter(tx => tx.type === "expense");
-  const totalExpense = expenseTxs.reduce((sum, tx) => sum + tx.amount, 0);
+  const totalExpense = preciseSum(expenseTxs.map(tx => tx.amount));
 
   const categoryData = EXPENSE_CATEGORIES.map(category => {
-    const amount = expenseTxs
-      .filter(tx => tx.category === category)
-      .reduce((sum, tx) => sum + tx.amount, 0);
+    const amount = preciseSum(
+      expenseTxs
+        .filter(tx => tx.category === category)
+        .map(tx => tx.amount)
+    );
     return {
       category,
       amount,
@@ -60,8 +63,8 @@ export const AnalyticsCharts: React.FC = () => {
       const endStr = end.toISOString().split("T")[0];
 
       const periodTxs = transactions.filter(tx => tx.date >= startStr && tx.date <= endStr);
-      const income = periodTxs.filter(tx => tx.type === "income").reduce((sum, tx) => sum + tx.amount, 0);
-      const expense = periodTxs.filter(tx => tx.type === "expense").reduce((sum, tx) => sum + tx.amount, 0);
+      const income = preciseSum(periodTxs.filter(tx => tx.type === "income").map(tx => tx.amount));
+      const expense = preciseSum(periodTxs.filter(tx => tx.type === "expense").map(tx => tx.amount));
 
       data.push({
         label: i === 0 ? "This Week" : `Wk -${i}`,
@@ -90,12 +93,14 @@ export const AnalyticsCharts: React.FC = () => {
 
       // Find deltas on this day
       const dayTxs = transactions.filter(tx => tx.date === dateStr);
-      const dayDelta = dayTxs.reduce((sum, tx) => sum + (tx.type === "income" ? tx.amount : -tx.amount), 0);
+      const dayDelta = preciseSum(
+        dayTxs.map(tx => tx.type === "income" ? tx.amount : -tx.amount)
+      );
       values[i] = dayDelta;
     }
 
     // Cumulative math
-    let currentNetWorth = accounts.reduce((sum, acc) => sum + acc.balance, 0);
+    let currentNetWorth = preciseSum(accounts.map(acc => acc.balance));
     const history = [];
 
     // Walk backwards to compute values, then reverse
@@ -104,7 +109,7 @@ export const AnalyticsCharts: React.FC = () => {
         date: dates[i],
         amount: currentNetWorth
       };
-      currentNetWorth -= values[i];
+      currentNetWorth = preciseSubtract(currentNetWorth, values[i]);
     }
     return history;
   };
@@ -378,7 +383,7 @@ export const AnalyticsCharts: React.FC = () => {
               {hoveredPoint ? (
                 <div className="text-xs">
                   <span className="font-mono text-zinc-500 mr-2">{hoveredPoint.date}:</span>
-                  <span className="font-bold text-white font-mono">${hoveredPoint.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                  <span className="font-bold text-white font-mono">LKR {hoveredPoint.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
                 </div>
               ) : (
                 <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-wider flex items-center gap-1">
@@ -393,4 +398,3 @@ export const AnalyticsCharts: React.FC = () => {
     </div>
   );
 };
-
