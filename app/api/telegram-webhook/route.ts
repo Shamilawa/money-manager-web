@@ -67,10 +67,13 @@ Be friendly and concise in your responses.
 
       // Fetch chat history for this user
       const { rows: historyRows } = await sql`
-        SELECT role, content FROM agent_chat_history
-        WHERE chat_id = ${chatId}
+        SELECT role, content FROM (
+          SELECT role, content, created_at FROM agent_chat_history
+          WHERE chat_id = ${chatId}
+          ORDER BY created_at DESC
+          LIMIT 15
+        ) sub
         ORDER BY created_at ASC
-        LIMIT 15
       `;
       
       const pastMessages = historyRows.map(row => ({
