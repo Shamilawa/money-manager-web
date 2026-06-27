@@ -11,7 +11,8 @@ import {
   editTransaction as dbEditTransaction, 
   deleteTransaction as dbDeleteTransaction, 
   transferFunds as dbTransferFunds,
-  setupInitialBudgets
+  setupInitialBudgets,
+  setPrimaryAccount as dbSetPrimaryAccount
 } from "../app/actions";
 import { 
   preciseAdd, 
@@ -43,6 +44,7 @@ export interface Account {
   creditLimit?: number;
   minimumPayment?: number;
   dueDate?: number;
+  isPrimary?: boolean;
 }
 
 export interface Budget {
@@ -72,6 +74,7 @@ interface FinanceContextType {
   addAccount: (acc: Omit<Account, "id">) => Promise<void>;
   editAccount: (acc: Account) => Promise<void>;
   deleteAccount: (id: string) => Promise<void>;
+  setPrimaryAccount: (id: string) => Promise<void>;
   getFilteredTransactions: () => Transaction[];
   resetData: () => Promise<void>;
   isLoading: boolean;
@@ -231,6 +234,16 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     try {
       await dbDeleteAccount(id);
+    } catch (e) {
+      console.error(e);
+      await fetchAllData();
+    }
+  };
+
+  const setPrimaryAccount = async (id: string) => {
+    setAccounts(prev => prev.map(a => ({ ...a, isPrimary: a.id === id })));
+    try {
+      await dbSetPrimaryAccount(id);
     } catch (e) {
       console.error(e);
       await fetchAllData();
@@ -409,7 +422,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       value={{
         transactions, accounts, budgets, filters, setFilters,
         addTransaction, editTransaction, deleteTransaction, transferFunds,
-        addAccount, editAccount, deleteAccount, getFilteredTransactions, resetData, isLoading
+        addAccount, editAccount, deleteAccount, setPrimaryAccount, getFilteredTransactions, resetData, isLoading
       }}
     >
       {children}

@@ -12,7 +12,8 @@ export async function getAccounts(): Promise<Account[]> {
            interest_rate::float as "interestRate",
            credit_limit::float as "creditLimit",
            minimum_payment::float as "minimumPayment",
-           due_date as "dueDate"
+           due_date as "dueDate",
+           is_primary as "isPrimary"
     FROM accounts 
     ORDER BY name ASC
   `;
@@ -32,7 +33,7 @@ export async function getTransactions(): Promise<Transaction[]> {
       to_char(date, 'YYYY-MM-DD') as date, 
       notes 
     FROM transactions 
-    ORDER BY date DESC
+    ORDER BY date DESC, created_at DESC
   `;
   return rows as Transaction[];
 }
@@ -76,6 +77,14 @@ export async function editAccount(acc: Account) {
 
 export async function deleteAccount(id: string) {
   await sql`DELETE FROM accounts WHERE id = ${id}`;
+  revalidatePath("/");
+}
+
+export async function setPrimaryAccount(id: string) {
+  // First set all accounts to false
+  await sql`UPDATE accounts SET is_primary = false`;
+  // Then set the chosen one to true
+  await sql`UPDATE accounts SET is_primary = true WHERE id = ${id}`;
   revalidatePath("/");
 }
 

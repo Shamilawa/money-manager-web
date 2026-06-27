@@ -1,6 +1,7 @@
 "use client";
-import React from "react";
+import React, { useState } from "react";
 import { useFinance } from "../context/FinanceContext";
+import SettingsModal from "./SettingsModal";
 import { preciseSum } from "../utils/math";
 import { 
   Wallet, 
@@ -9,11 +10,13 @@ import {
   ArrowDownLeft, 
   Coins, 
   ArrowsClockwise, 
-  ListBullets 
+  ListBullets,
+  Gear
 } from "@phosphor-icons/react";
 
 export const Sidebar: React.FC = () => {
   const { accounts, filters, setFilters, resetData, transactions } = useFinance();
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const handleTypeChange = (type: "all" | "income" | "expense") => {
     setFilters(prev => ({ ...prev, type }));
@@ -158,7 +161,14 @@ export const Sidebar: React.FC = () => {
       </div>
 
       {/* Footer controls */}
-      <div className="p-4 border-t border-border-subtle bg-bg-panel/20">
+      <div className="p-4 border-t border-border-subtle bg-bg-panel/20 space-y-2">
+        <button
+          onClick={() => setIsSettingsOpen(true)}
+          className="w-full py-1.5 bg-zinc-900/50 hover:bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-border-subtle rounded-md text-[10px] font-mono font-bold tracking-wider uppercase flex items-center justify-center gap-1.5 cursor-pointer btn-tactile"
+        >
+          <Gear size={12} />
+          AI Settings
+        </button>
         <button
           onClick={resetData}
           className="w-full py-1.5 bg-zinc-900/50 hover:bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-border-subtle rounded-md text-[10px] font-mono font-bold tracking-wider uppercase flex items-center justify-center gap-1.5 cursor-pointer btn-tactile"
@@ -167,6 +177,8 @@ export const Sidebar: React.FC = () => {
           Reset Demo Data
         </button>
       </div>
+
+      {isSettingsOpen && <SettingsModal onClose={() => setIsSettingsOpen(false)} />}
     </aside>
   );
 };
